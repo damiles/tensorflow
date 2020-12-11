@@ -106,6 +106,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
         double min = FloatAttr::getValueAsDouble(*it++);
         double max = FloatAttr::getValueAsDouble(*it);
+        // Temporary fix to make sure that the scaling is well calculated when
+        // min > 0 (see https://github.com/tensorflow/tensorflow/issues/45038)
+        min = std::min(0.0, min);
         TensorRangeSanityCheck(op, min, max);
         mins.push_back(min);
         maxs.push_back(max);
@@ -116,6 +119,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      // Temporary fix to make sure that the scaling is well calculated when
+      // rmin > 0 (see https://github.com/tensorflow/tensorflow/issues/45038)
+      rmin = std::min(0.0, rmin);
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,

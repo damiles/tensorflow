@@ -98,6 +98,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
 // given.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
+
+// Lower some calibrated TFL operators to a TFL Table operator
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerToTablePass();
 }  // namespace TFL
 
 }  // namespace mlir

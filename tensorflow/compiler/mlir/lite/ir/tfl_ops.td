@@ -1482,8 +1482,7 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
 def TFL_ExpOp: TFL_Op<"exp", [
     NoSideEffect,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1493,6 +1492,18 @@ def TFL_ExpOp: TFL_Op<"exp", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  // The TFL_SameFirstOperandAndFirstResultElementType traits requires the
+  // builder to pass the input type as parameter. Create a builder that doesn't
+  // require the type as parameter so that it can be used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilderDAG<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let hasOptions = 0b1;
 }
@@ -1876,9 +1887,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 
 def TFL_LogOp: TFL_Op<"log", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType,
+    SameOperandsAndResultShape]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -2452,8 +2462,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
 def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
     NoSideEffect,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoQuantizableResult]> {
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2651,10 +2660,10 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   let hasOptions = 1;
 }
 
-def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
-                                  TFL_SameFirstOperandAndFirstResultElementType,
-                                  SameOperandsAndResultShape,
-                                  NoQuantizableResult]> {
+def TFL_RsqrtOp: TFL_Op<"rsqrt", [
+    NoSideEffect,
+    TFL_SameFirstOperandAndFirstResultElementType,
+    SameOperandsAndResultShape]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
@@ -2875,9 +2884,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType,
+    SameOperandsAndResultShape]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -2887,6 +2895,18 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  // The TFL_SameFirstOperandAndFirstResultElementType traits requires the
+  // builder to pass the input type as parameter. Create a builder that doesn't
+  // require the type as parameter so that it can be used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilderDAG<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let hasFolder = 1;
 }

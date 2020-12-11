@@ -95,6 +95,11 @@ TfLiteStatus QuantizeModel(
   pm.addPass(TFL::CreateQuantizePass());
   pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 
+  const bool lower_to_table = true; // TODO Pass it as parameter
+  if (lower_to_table) {
+    pm.addPass(TFL::CreateLowerToTablePass());
+  }
+
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();
     error_reporter->Report("Failed to quantize: %s", err.c_str());
