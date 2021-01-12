@@ -226,6 +226,65 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 }
 #endif
 
+// TODO Used only by reference kernel so speed is not the most important.
+// Could not inline it and put it in a .cpp file to avoid binary bloat.
+inline int32_t MultiplyByQuantizedMultiplierRef(int32_t x,
+                                                int32_t quantized_multiplier,
+                                                int shift, int version) {
+  if (version == 2) {
+    assert(quantized_multiplier >= 0);
+    assert(shift >= -31 && shift < 8);
+
+    int total_shift = 31 - shift;
+    int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
+    int64_t result = x * static_cast<int64_t>(quantized_multiplier) + round;
+    result = result >> total_shift;
+
+    assert(result >= std::numeric_limits<int32_t>::min() &&
+           result <= std::numeric_limits<int32_t>::max());
+    return static_cast<int32_t>(result);
+  } else {
+    assert(version == 1);
+    using gemmlowp::RoundingDivideByPOT;
+    using gemmlowp::SaturatingRoundingDoublingHighMul;
+    int left_shift = shift > 0 ? shift : 0;
+    int right_shift = shift > 0 ? 0 : -shift;
+    return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                                   x * (1 << left_shift), quantized_multiplier),
+                               right_shift);
+  }
+}
+
+inline int32_t MultiplyByQuantizedMultiplierRef(int64_t x,
+                                                int32_t quantized_multiplier,
+                                                int shift, int version) {
+  // Inputs:
+  // - quantized_multiplier has fixed point at bit 31
+  // - shift is -31 to +7 (negative for right shift)
+  //
+  // Assumptions: The following input ranges are assumed
+  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
+  // - scaling is chosen so final scaled result fits in int32_t
+  // - input x is in the range -(1<<47) <= x < (1<<47)
+  assert(quantized_multiplier >= 0);
+  assert(shift >= -31 && shift < 8);
+  assert(x >= -(static_cast<int64_t>(1) << 47) &&
+         x < (static_cast<int64_t>(1) << 47) - 1);
+
+  assert(version == 1 || version == 2);
+  int32_t reduced_multiplier = (quantized_multiplier < 0x7FFF0000)
+                                   ? ((quantized_multiplier + (1 << 15)) >> 16)
+                                   : 0x7FFF;
+  int total_shift = 15 - shift;
+  int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
+  int64_t result = x * static_cast<int64_t>(reduced_multiplier) + round;
+  result = result >> total_shift;
+
+  assert(result >= std::numeric_limits<int32_t>::min() &&
+         result <= std::numeric_limits<int32_t>::max());
+  return static_cast<int32_t>(result);
+}
+
 template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,

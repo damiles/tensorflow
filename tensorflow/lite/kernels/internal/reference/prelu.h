@@ -48,16 +48,18 @@ inline void BroadcastPrelu4DSlow(
               params.input_offset + input_data[input_index];
           int32_t output_value;
           if (input_value >= 0) {
-            output_value = MultiplyByQuantizedMultiplier(
-                input_value, params.output_multiplier_1, params.output_shift_1);
+            output_value = MultiplyByQuantizedMultiplierRef(
+                input_value, params.output_multiplier_1, params.output_shift_1,
+                params.mult_by_quant_multiplier_ref_version);
           } else {
             auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
             const int32_t alpha_value =
                 params.alpha_offset + alpha_data[alpha_index];
 
-            output_value = MultiplyByQuantizedMultiplier(
+            output_value = MultiplyByQuantizedMultiplierRef(
                 input_value * alpha_value, params.output_multiplier_2,
-                params.output_shift_2);
+                params.output_shift_2,
+                params.mult_by_quant_multiplier_ref_version);
           }
           output_value += params.output_offset;
 
@@ -86,14 +88,15 @@ inline void Prelu(const PreluParams& params, const RuntimeShape& input_shape,
     const int32_t input_value = params.input_offset + input_data[i];
     int32_t output_value;
     if (input_value >= 0) {
-      output_value = MultiplyByQuantizedMultiplier(
-          input_value, params.output_multiplier_1, params.output_shift_1);
+      output_value = MultiplyByQuantizedMultiplierRef(
+          input_value, params.output_multiplier_1, params.output_shift_1,
+          params.mult_by_quant_multiplier_ref_version);
     } else {
       const int32_t alpha_value = params.alpha_offset + alpha_data[i];
 
-      output_value = MultiplyByQuantizedMultiplier(input_value * alpha_value,
-                                                   params.output_multiplier_2,
-                                                   params.output_shift_2);
+      output_value = MultiplyByQuantizedMultiplierRef(
+          input_value * alpha_value, params.output_multiplier_2,
+          params.output_shift_2, params.mult_by_quant_multiplier_ref_version);
     }
     output_value += params.output_offset;
 

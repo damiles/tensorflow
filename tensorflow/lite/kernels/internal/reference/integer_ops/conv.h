@@ -37,6 +37,8 @@ inline void ConvPerChannel(
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
   const int32_t output_offset = params.output_offset;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   // Set min and max value of the output.
   const int32_t output_activation_min = params.quantized_activation_min;
@@ -111,8 +113,9 @@ inline void ConvPerChannel(
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier[out_channel], output_shift[out_channel]);
+          acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier[out_channel], output_shift[out_channel],
+              mult_by_quant_multiplier_ref_version);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -140,6 +143,8 @@ inline void ConvPerChannel(
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   // Set min and max value of the output.
   const int32_t output_activation_min = params.quantized_activation_min;
@@ -203,8 +208,9 @@ inline void ConvPerChannel(
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          int32_t scaled_acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier[out_channel], output_shift[out_channel]);
+          int32_t scaled_acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier[out_channel], output_shift[out_channel],
+              mult_by_quant_multiplier_ref_version);
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =

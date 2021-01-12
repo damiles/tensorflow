@@ -39,6 +39,8 @@ inline void DepthwiseConvPerChannel(
   const int32_t output_offset = params.output_offset;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   // Check dimensions of the tensors.
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -104,9 +106,10 @@ inline void DepthwiseConvPerChannel(
             if (bias_data) {
               acc += bias_data[output_channel];
             }
-            acc = MultiplyByQuantizedMultiplier(
+            acc = MultiplyByQuantizedMultiplierRef(
                 acc, output_multiplier[output_channel],
-                output_shift[output_channel]);
+                output_shift[output_channel],
+                mult_by_quant_multiplier_ref_version);
             acc += output_offset;
             acc = std::max(acc, output_activation_min);
             acc = std::min(acc, output_activation_max);
@@ -136,6 +139,8 @@ inline void DepthwiseConvPerChannel(
   const int depth_multiplier = params.depth_multiplier;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   // Check dimensions of the tensors.
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -190,9 +195,10 @@ inline void DepthwiseConvPerChannel(
             if (bias_data) {
               acc += bias_data[output_channel];
             }
-            int32_t scaled_acc = MultiplyByQuantizedMultiplier(
+            int32_t scaled_acc = MultiplyByQuantizedMultiplierRef(
                 acc, output_multiplier[output_channel],
-                output_shift[output_channel]);
+                output_shift[output_channel],
+                mult_by_quant_multiplier_ref_version);
             scaled_acc = std::max(scaled_acc, output_activation_min);
             scaled_acc = std::min(scaled_acc, output_activation_max);
             output_data[Offset(output_shape, batch, out_y, out_x,

@@ -102,6 +102,8 @@ inline void HardSwish(const HardSwishParams& params,
     // about the fine details of saturation when left-shifting, because here
     // overflow in left-shift is a common case, not an anomaly as
     // MultiplyByQuantizedMultiplier assumes.
+    //
+    // TODO Check to align with MultiplyByQuantizedMultiplierRef versioning
     int16_t reluish_value = input_value_on_hires_input_scale;
     // Shift left, saturating, as much as we can while ensuring that this
     // saturation will not contribute to the result. That is, left shift amount

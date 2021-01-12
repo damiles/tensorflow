@@ -148,19 +148,20 @@ inline int8_t SquaredDifference(int8_t x, int8_t y,
   const int32_t input2_val = params.input2_offset + y;
   const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
   const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
-  const int32_t scaled_input1_val =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          shifted_input1_val, params.input1_multiplier, params.input1_shift);
-  const int32_t scaled_input2_val =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          shifted_input2_val, params.input2_multiplier, params.input2_shift);
+  const int32_t scaled_input1_val = MultiplyByQuantizedMultiplierRef(
+      shifted_input1_val, params.input1_multiplier, params.input1_shift,
+      params.mult_by_quant_multiplier_ref_version);
+  const int32_t scaled_input2_val = MultiplyByQuantizedMultiplierRef(
+      shifted_input2_val, params.input2_multiplier, params.input2_shift,
+      params.mult_by_quant_multiplier_ref_version);
   const int32_t raw_diff = scaled_input1_val - scaled_input2_val;
 
   // Max of this is 255^2 * (1 << 14), so won't overflow 32 bits.
   const int32_t squared_raw_diff = raw_diff * raw_diff;
   const int32_t raw_output =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          squared_raw_diff, params.output_multiplier, params.output_shift) +
+      MultiplyByQuantizedMultiplierRef(
+          squared_raw_diff, params.output_multiplier, params.output_shift,
+          params.mult_by_quant_multiplier_ref_version) +
       params.output_offset;
   const int32_t clamped_output =
       std::min(params.quantized_activation_max,

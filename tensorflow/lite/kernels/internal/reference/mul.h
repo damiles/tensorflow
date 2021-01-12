@@ -31,9 +31,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32_t input2_val = params.input2_offset + input2_data[i];
     const int32_t unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplier(input1_val * input2_val,
-                                      params.output_multiplier,
-                                      params.output_shift);
+        MultiplyByQuantizedMultiplierRef(
+            input1_val * input2_val, params.output_multiplier,
+            params.output_shift, params.mult_by_quant_multiplier_ref_version);
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -97,9 +97,10 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
               input2_data[SubscriptToIndex(desc2, b, y, x, c)];
           const int32_t unclamped_result =
               params.output_offset +
-              MultiplyByQuantizedMultiplier(input1_val * input2_val,
-                                            params.output_multiplier,
-                                            params.output_shift);
+              MultiplyByQuantizedMultiplierRef(
+                  input1_val * input2_val, params.output_multiplier,
+                  params.output_shift,
+                  params.mult_by_quant_multiplier_ref_version);
           const int32_t clamped_output = std::min(
               params.quantized_activation_max,
               std::max(params.quantized_activation_min, unclamped_result));

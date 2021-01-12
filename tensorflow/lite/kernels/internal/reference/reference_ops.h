@@ -186,10 +186,11 @@ inline void ReluX(const tflite::ReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const int32 val = static_cast<int32_t>(input_data[i]);
-    int32 clamped = params.output_offset +
-                    MultiplyByQuantizedMultiplier(val - params.input_offset,
-                                                  params.output_multiplier,
-                                                  params.output_shift);
+    int32 clamped =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierRef(
+            val - params.input_offset, params.output_multiplier,
+            params.output_shift, params.mult_by_quant_multiplier_ref_version);
     clamped = std::max(params.quantized_activation_min, clamped);
     clamped = std::min(params.quantized_activation_max, clamped);
     output_data[i] = static_cast<T>(clamped);
@@ -240,14 +241,16 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
     int32 unclamped_output;
     if (input_value >= 0) {
       unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
+                         MultiplyByQuantizedMultiplierRef(
                              input_value, params.output_multiplier_identity,
-                             params.output_shift_identity);
+                             params.output_shift_identity,
+                             params.mult_by_quant_multiplier_ref_version);
     } else {
       unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
+                         MultiplyByQuantizedMultiplierRef(
                              input_value, params.output_multiplier_alpha,
-                             params.output_shift_alpha);
+                             params.output_shift_alpha,
+                             params.mult_by_quant_multiplier_ref_version);
     }
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
@@ -840,8 +843,9 @@ inline void LstmCell(const LstmCellParams& params,
       // (16-bit, using 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum =
-          MultiplyByQuantizedMultiplier(accum, accum_multiplier, accum_shift);
+      accum = MultiplyByQuantizedMultiplierRef(
+          accum, accum_multiplier, accum_shift,
+          params.mult_by_quant_multiplier_ref_version);
       // Saturate, cast to int16, and store to the temporary activations array.
       accum = std::max(-32768, std::min(32767, accum));
       activ_temp_data_int16[out_c + fc_output_depth * b] = accum;
@@ -1037,6 +1041,8 @@ inline void LogSoftmax(const SoftmaxParams& params,
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
   const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
   const int diff_min = params.diff_min;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large
   // as -32 before multiplying by input_beta_multiplier, and therefore as
@@ -1066,9 +1072,9 @@ inline void LogSoftmax(const SoftmaxParams& params,
       int32 input_diff =
           static_cast<int32>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
+        const int32 input_diff_rescaled = MultiplyByQuantizedMultiplierRef(
+            input_diff, input_multiplier, input_left_shift,
+            mult_by_quant_multiplier_ref_version);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
         sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
@@ -1090,17 +1096,18 @@ inline void LogSoftmax(const SoftmaxParams& params,
         fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
     const int adjusted_diff_min =
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                 MultiplyByQuantizedMultiplierRef(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     -reverse_scaling_right_shift));
+                     -reverse_scaling_right_shift,
+                     params.mult_by_quant_multiplier_ref_version));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
           static_cast<int32>(input_data[i * depth + c]) - max_in_row;
       if (input_diff > adjusted_diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
+        const int32 input_diff_rescaled = MultiplyByQuantizedMultiplierRef(
+            input_diff, input_multiplier, input_left_shift,
+            params.mult_by_quant_multiplier_ref_version);
         int32 unsat_output =
             gemmlowp::RoundingDivideByPOT(
                 (input_diff_rescaled - fixed_log_sum_of_exps),

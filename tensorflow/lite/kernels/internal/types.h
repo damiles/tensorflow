@@ -747,7 +747,16 @@ struct MinMax {
 };
 static_assert(sizeof(MinMax) == 8, "");
 
-struct ActivationParams {
+struct VersionParams {
+  // TODO op_version field has no utility yet other than coherence, could be
+  // removed.
+  int op_version = 1;
+  // TODO Could use a function pointer to the MultiplyByQuantizedMultiplier
+  // we want to use instead of a version number.
+  int mult_by_quant_multiplier_ref_version = 1;
+};
+
+struct ActivationParams : public VersionParams {
   FusedActivationFunctionType activation_type;
   // uint8_t, etc, activation params.
   int32_t quantized_activation_min;
@@ -770,7 +779,7 @@ enum class ResizingCategory : uint8_t {
 };
 
 // For Add, Sub, Mul ops.
-struct ArithmeticParams {
+struct ArithmeticParams : public VersionParams {
   // Shape dependent / common to data / op types.
   BroadcastableOpCategory broadcast_category;
   // uint8_t inference params.
@@ -809,7 +818,7 @@ struct ArithmeticParams {
   int broadcast_shape[5];
 };
 
-struct ConcatenationParams {
+struct ConcatenationParams : public VersionParams {
   int8_t axis;
   const int32_t* input_zeropoint;
   const float* input_scale;
@@ -818,7 +827,7 @@ struct ConcatenationParams {
   float output_scale;
 };
 
-struct ComparisonParams {
+struct ComparisonParams : public VersionParams {
   // uint8_t inference params.
   int left_shift;
   int32_t input1_offset;
@@ -831,7 +840,7 @@ struct ComparisonParams {
   bool is_broadcast;
 };
 
-struct ConvParams {
+struct ConvParams : public VersionParams {
   PaddingType padding_type;
   PaddingValues padding_values;
   // TODO(starka): This was just "stride", so check that width+height is OK.
@@ -858,7 +867,7 @@ struct DepthToSpaceParams {
   int32_t block_size;
 };
 
-struct DepthwiseParams {
+struct DepthwiseParams : public VersionParams {
   PaddingType padding_type;
   PaddingValues padding_values;
   int16_t stride_width;
@@ -899,7 +908,7 @@ struct FakeQuantParams {
   int32_t num_bits;
 };
 
-struct FullyConnectedParams {
+struct FullyConnectedParams : public VersionParams {
   // uint8_t inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
   int32_t input_offset;
@@ -923,7 +932,7 @@ struct GatherParams {
   int16_t axis;
 };
 
-struct L2NormalizationParams {
+struct L2NormalizationParams : public VersionParams {
   // uint8_t inference params.
   int32_t input_zero_point;
 };
@@ -964,14 +973,14 @@ struct LogisticParams {
   int input_left_shift;
 };
 
-struct LstmCellParams {
+struct LstmCellParams : public VersionParams {
   int32_t weights_zero_point;
   int32_t accum_multiplier;
   int accum_shift;
   int state_integer_bits;
 };
 
-struct MeanParams {
+struct MeanParams : public VersionParams {
   int8_t axis_count;
   int16_t axis[4];
 };
@@ -993,7 +1002,7 @@ struct PadParams {
   ResizingCategory resizing_category;
 };
 
-struct PreluParams {
+struct PreluParams : public VersionParams {
   int32_t input_offset;
   int32_t alpha_offset;
   int32_t output_offset;
@@ -1044,7 +1053,7 @@ struct SliceParams {
   int32_t size[5];
 };
 
-struct SoftmaxParams {
+struct SoftmaxParams : public VersionParams {
   // beta is not really used (not a Tensorflow parameter) and not implemented
   // for LogSoftmax.
   double beta;
@@ -1102,7 +1111,7 @@ struct StridedSliceParams {
   int16_t shrink_axis_mask;
 };
 
-struct TanhParams {
+struct TanhParams : public VersionParams {
   int32_t input_zero_point;
   int32_t input_range_radius;
   int32_t input_multiplier;
@@ -1119,7 +1128,7 @@ struct UnpackParams {
   int16_t axis;
 };
 
-struct LeakyReluParams {
+struct LeakyReluParams : public VersionParams {
   float alpha;
   int32_t input_offset;
   int32_t output_offset;

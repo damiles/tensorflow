@@ -61,6 +61,7 @@ enum class DepthwiseConvDepthMultiplication {
 namespace reference_ops {
 namespace depthwise_conv {
 
+// TODO Manage versioning of MultiplyByQuantizedMultiplier(Ref)
 template <DepthwiseConvOutputRounding output_rounding>
 inline int32_t DepthwiseConvRound(int32_t x, int32_t quantized_multiplier,
                                   int shift) {

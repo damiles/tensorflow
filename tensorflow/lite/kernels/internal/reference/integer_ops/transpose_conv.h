@@ -56,6 +56,8 @@ inline void TransposeConv(
   const int32_t output_activation_min = std::numeric_limits<int8_t>::min();
   const int32_t output_activation_max = std::numeric_limits<int8_t>::max();
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
@@ -106,8 +108,9 @@ inline void TransposeConv(
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier[out_channel], output_shift[out_channel]);
+          acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier[out_channel], output_shift[out_channel],
+              mult_by_quant_multiplier_ref_version);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -153,6 +156,8 @@ inline void TransposeConv(
   const int32_t output_activation_min = std::numeric_limits<int16_t>::min();
   const int32_t output_activation_max = std::numeric_limits<int16_t>::max();
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
@@ -203,8 +208,9 @@ inline void TransposeConv(
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          int32_t scaled_acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier[out_channel], output_shift[out_channel]);
+          int32_t scaled_acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier[out_channel], output_shift[out_channel],
+              mult_by_quant_multiplier_ref_version);
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =

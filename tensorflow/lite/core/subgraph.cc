@@ -879,6 +879,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     // Resolved ops can have a null Prepare function.
     return kTfLiteOk;
   }
+  // TODO Pass op_reg.version to op_reg.prepare
   return op_reg.prepare(&context_, node);
 }
 

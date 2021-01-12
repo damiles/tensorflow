@@ -307,7 +307,9 @@ inline void Mean(const tflite::MeanParams& op_params,
           acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
-      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc = MultiplyByQuantizedMultiplierRef(
+          acc, multiplier, shift,
+          op_params.mult_by_quant_multiplier_ref_version);
       acc += bias;
       acc = std::min(std::max(acc, kMinValue), kMaxValue);
       output_data[Offset(output_shape, out_b, 0, 0, out_d)] =

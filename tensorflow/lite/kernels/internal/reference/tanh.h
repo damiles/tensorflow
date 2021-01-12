@@ -89,6 +89,8 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   const int input_left_shift = params.input_left_shift;
   const int32_t output_zero_point = 128;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   for (int i = 0; i < flat_size; i++) {
     const uint8_t input_val_u8 = input_data[i];
@@ -100,9 +102,9 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
     } else if (input_val_centered >= input_range_radius) {
       output_val = 255;
     } else {
-      const int32_t input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
+      const int32_t input_val_rescaled = MultiplyByQuantizedMultiplierRef(
+          input_val_centered, input_multiplier, input_left_shift,
+          mult_by_quant_multiplier_ref_version);
       using FixedPoint4 = gemmlowp::FixedPoint<int32_t, 4>;
       using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);

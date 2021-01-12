@@ -271,6 +271,8 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   for (int b0 = 0; b0 < batch_dim0; ++b0) {
@@ -294,8 +296,9 @@ inline void BatchMatMul(const FullyConnectedParams& params,
               AccumT rhs_val = rhs_ptr2[accum_depth * j + k];
               total += (lhs_val + filter_offset) * (rhs_val + input_offset);
             }
-            int32_t total_scaled = MultiplyByQuantizedMultiplier(
-                total, output_multiplier, output_shift);
+            int32_t total_scaled = MultiplyByQuantizedMultiplierRef(
+                total, output_multiplier, output_shift,
+                mult_by_quant_multiplier_ref_version);
             total_scaled += output_offset;
             total_scaled = std::max(total_scaled, output_activation_min);
             total_scaled = std::min(total_scaled, output_activation_max);

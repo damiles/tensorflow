@@ -72,6 +72,8 @@ inline void FullyConnected(
   const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
 
@@ -98,7 +100,9 @@ inline void FullyConnected(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      acc = MultiplyByQuantizedMultiplierRef(
+          acc, output_multiplier, output_shift,
+          mult_by_quant_multiplier_ref_version);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -120,6 +124,8 @@ inline void FullyConnected(
   const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
@@ -150,8 +156,9 @@ inline void FullyConnected(
       // (16-bit, typically 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum =
-          MultiplyByQuantizedMultiplier(accum, output_multiplier, output_shift);
+      accum = MultiplyByQuantizedMultiplierRef(
+          accum, output_multiplier, output_shift,
+          mult_by_quant_multiplier_ref_version);
       // Saturate, cast to int16_t, and store to output array.
       accum = std::max(accum, output_activation_min - output_offset);
       accum = std::min(accum, output_activation_max - output_offset);
@@ -172,6 +179,8 @@ inline void ShuffledFullyConnected(
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
 
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
@@ -248,8 +257,9 @@ inline void ShuffledFullyConnected(
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
-        acc =
-            MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+        acc = MultiplyByQuantizedMultiplierRef(
+            acc, output_multiplier, output_shift,
+            mult_by_quant_multiplier_ref_version);
         // Saturate, cast to int16_t, and store to output array.
         acc = std::max(acc, output_activation_min);
         acc = std::min(acc, output_activation_max);
@@ -299,8 +309,9 @@ inline void ShuffledFullyConnected(
           // (16-bit, typically 3 integer bits) fixed-point format. The
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
-          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              output_shift);
+          acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier, output_shift,
+              mult_by_quant_multiplier_ref_version);
           // Saturate, cast to int16_t, and store to output array.
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);

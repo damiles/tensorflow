@@ -145,6 +145,8 @@ inline void TransposeConv(
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
   }
@@ -198,8 +200,9 @@ inline void TransposeConv(
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          int32_t scaled_acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier, output_shift);
+          int32_t scaled_acc = MultiplyByQuantizedMultiplierRef(
+              acc, output_multiplier, output_shift,
+              mult_by_quant_multiplier_ref_version);
           scaled_acc += output_offset;
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);

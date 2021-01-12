@@ -70,6 +70,8 @@ inline void Softmax(const SoftmaxParams& params,
   const int32_t input_beta_multiplier = params.input_multiplier;
   const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
+  const int mult_by_quant_multiplier_ref_version =
+      params.mult_by_quant_multiplier_ref_version;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -100,9 +102,9 @@ inline void Softmax(const SoftmaxParams& params,
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32_t input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_beta_multiplier, input_beta_left_shift);
+        const int32_t input_diff_rescaled = MultiplyByQuantizedMultiplierRef(
+            input_diff, input_beta_multiplier, input_beta_left_shift,
+            mult_by_quant_multiplier_ref_version);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
         sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
@@ -118,9 +120,9 @@ inline void Softmax(const SoftmaxParams& params,
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32_t input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_beta_multiplier, input_beta_left_shift);
+        const int32_t input_diff_rescaled = MultiplyByQuantizedMultiplierRef(
+            input_diff, input_beta_multiplier, input_beta_left_shift,
+            mult_by_quant_multiplier_ref_version);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
 
@@ -151,8 +153,9 @@ inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params,
   int32_t input_diff = input_data[i * depth + c] - max_in_row;
   // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
   // exp lut generated with range [-10, 0], as exp(-10) is negligible.
-  int32_t scaled_diff = MultiplyByQuantizedMultiplier(
-      input_diff, params.input_multiplier, params.input_left_shift);
+  int32_t scaled_diff = MultiplyByQuantizedMultiplierRef(
+      input_diff, params.input_multiplier, params.input_left_shift,
+      params.mult_by_quant_multiplier_ref_version);
   // recenter to [-32768, 32767]
   int32_t sym_scaled_diff = scaled_diff + 32767;
   int16_t sat_sym_scaled_diff =

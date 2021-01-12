@@ -1829,6 +1829,8 @@ Optional<std::string> Translator::TranslateInternal() {
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
+  // TODO Add possibility to use a specific version. Error-out if the requested
+  // version is smaller than GetBuiltinOperatorVersion.
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
 

@@ -60,7 +60,9 @@ inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
                  input_zero_point;
         }
       }
-      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc = MultiplyByQuantizedMultiplierRef(
+          acc, multiplier, shift,
+          op_params.mult_by_quant_multiplier_ref_version);
       acc = acc > 0 ? (acc + num_elements_in_axis / 2) / num_elements_in_axis
                     : (acc - num_elements_in_axis / 2) / num_elements_in_axis;
       acc += output_zero_point;

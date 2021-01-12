@@ -88,16 +88,17 @@ inline int8_t AddFunc(int8_t x, int8_t y, const ArithmeticParams& params) {
   const int32_t input2_val = params.input2_offset + y;
   const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
   const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
-  const int32_t scaled_input1_val =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          shifted_input1_val, params.input1_multiplier, params.input1_shift);
-  const int32_t scaled_input2_val =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          shifted_input2_val, params.input2_multiplier, params.input2_shift);
+  const int32_t scaled_input1_val = MultiplyByQuantizedMultiplierRef(
+      shifted_input1_val, params.input1_multiplier, params.input1_shift,
+      params.mult_by_quant_multiplier_ref_version);
+  const int32_t scaled_input2_val = MultiplyByQuantizedMultiplierRef(
+      shifted_input2_val, params.input2_multiplier, params.input2_shift,
+      params.mult_by_quant_multiplier_ref_version);
   const int32_t raw_sum = scaled_input1_val + scaled_input2_val;
   const int32_t raw_output =
-      MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          raw_sum, params.output_multiplier, params.output_shift) +
+      MultiplyByQuantizedMultiplierRef(
+          raw_sum, params.output_multiplier, params.output_shift,
+          params.mult_by_quant_multiplier_ref_version) +
       params.output_offset;
   const int32_t clamped_output =
       std::min(params.quantized_activation_max,
