@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Ops"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "OpsSet"
     mtype: "<class \'enum.EnumMeta\'>"
   }

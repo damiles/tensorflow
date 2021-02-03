@@ -1,0 +1,12 @@
+path: "tensorflow.lite.Ops"
+tf_class {
+  is_instance: "<enum \'Ops\'>"
+  member {
+    name: "Add"
+    mtype: "<enum \'Ops\'>"
+  }
+  member {
+    name: "Mul"
+    mtype: "<enum \'Ops\'>"
+  }
+}

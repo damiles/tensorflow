@@ -226,7 +226,7 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 }
 #endif
 
-// TODO Used only by reference kernel so speed is not the most important.
+// TODO Used only by reference kerneld so speed is not the most important.
 // Could not inline it and put it in a .cpp file to avoid binary bloat.
 inline int32_t MultiplyByQuantizedMultiplierRef(int32_t x,
                                                 int32_t quantized_multiplier,

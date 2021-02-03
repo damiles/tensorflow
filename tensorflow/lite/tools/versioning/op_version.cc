@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -836,7 +837,9 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
   return op_sig;
 }
 
-void UpdateOpVersion(uint8_t* model_buffer_pointer) {
+void UpdateOpVersion(uint8_t* model_buffer_pointer,
+                     const std::unordered_map<tflite::BuiltinOperator, int>&
+                         operators_versions) {
   auto model = GetMutableModel(model_buffer_pointer);
   auto subgraphs = model->subgraphs();
 
@@ -852,6 +855,18 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        auto it_op_ver = operators_versions.find(builtin_code);
+        if (it_op_ver != operators_versions.end()) {
+          if (op_ver > it_op_ver->second) {
+            LOG(FATAL)
+                << "Requested version " << op_ver << " for operator "
+                << EnumNameBuiltinOperator(builtin_code)
+                << " is not compatible with the signature of the operator.";
+          }
+
+          op_ver = it_op_ver->second;
+        }
+
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
                      << EnumNameBuiltinOperator(builtin_code) << " to version "

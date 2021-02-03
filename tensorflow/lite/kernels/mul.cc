@@ -57,6 +57,9 @@ struct OpData {
   // Parameters used in all quantized paths
   int32_t output_multiplier;
   int output_shift;
+
+  int op_version;
+  int mult_by_quant_multiplier_ref_version;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -71,6 +74,11 @@ void Free(TfLiteContext* context, void* buffer) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  data->op_version = GetOpVersionFromContext(context, node);
+  data->mult_by_quant_multiplier_ref_version =
+      GetMultiplyByQuantMultiplierRefVersion(BuiltinOperator_MUL,
+                                             data->op_version);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -116,6 +124,9 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
   tflite::ArithmeticParams op_params;
+  op_params.op_version = data->op_version;
+  op_params.mult_by_quant_multiplier_ref_version =
+      data->mult_by_quant_multiplier_ref_version;
   const bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
       GetTensorShape(input1), GetTensorShape(input2), &op_params);
 #define TF_LITE_MUL(type, opname, data_type)                             \

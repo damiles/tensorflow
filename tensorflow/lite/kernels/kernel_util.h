@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -287,6 +288,12 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 
 // Return the size of given type in bytes. Return 0 in in case of string.
 int TfLiteTypeGetSize(TfLiteType type);
+
+
+int GetOpVersionFromContext(const TfLiteContext* context,
+                            const TfLiteNode* node);
+
+int GetMultiplyByQuantMultiplierRefVersion(BuiltinOperator op, int op_version);
 
 }  // namespace tflite
 

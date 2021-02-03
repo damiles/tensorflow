@@ -478,7 +478,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
     ],

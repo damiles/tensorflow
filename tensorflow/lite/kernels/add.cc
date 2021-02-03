@@ -87,23 +87,15 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus Prepare(TfLiteContext* context,
-                     TfLiteNode* node /*, int op_version*/) {
-  int op_version = 3;  // TODO Pass TfLiteRegistration::version to Prepare
-
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  data->op_version = op_version;
-  // TODO Pass it by parameter or deduce it from op_version as done currently?
-  // If deduced a change in MultiplyByQuantizedMultiplierRef version would
-  // require a version increment of all operators using it to use the latest
-  // version. It's more coherent though and probably more manageable in the
-  // future if we version other functions.
-  data->mult_by_quant_multiplier_ref_version = 1;
-  if (data->op_version >= 4) {
-    data->mult_by_quant_multiplier_ref_version = 2;
-  }
+  // TODO Pass the op_version by parameter? Or in TfLiteNode?
+  data->op_version = GetOpVersionFromContext(context, node);
+  data->mult_by_quant_multiplier_ref_version =
+      GetMultiplyByQuantMultiplierRefVersion(BuiltinOperator_ADD,
+                                             data->op_version);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);

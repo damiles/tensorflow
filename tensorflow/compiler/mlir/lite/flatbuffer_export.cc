@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -449,6 +450,8 @@ class Translator {
       bool emit_custom_ops,
       const std::unordered_set<std::string>& select_user_tf_ops,
       const std::unordered_set<std::string>& tags,
+      const std::unordered_map<tflite::BuiltinOperator, int>&
+          operators_versions,
       OpOrArgNameMapper* op_or_arg_name_mapper);
 
  private:
@@ -457,12 +460,15 @@ class Translator {
                       bool emit_select_tf_ops, bool emit_custom_ops,
                       const std::unordered_set<std::string>& select_user_tf_ops,
                       const std::unordered_set<std::string>& saved_model_tags,
+                      const std::unordered_map<tflite::BuiltinOperator, int>&
+                          operators_versions,
                       OpOrArgNameMapper* op_or_arg_name_mapper)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        select_user_tf_ops_(select_user_tf_ops) {
+        select_user_tf_ops_(select_user_tf_ops),
+        operators_versions_(operators_versions) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -644,6 +650,8 @@ class Translator {
   const std::unordered_set<std::string> saved_model_tags_;
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
+  // Versions of the operators requested by the user.
+  const std::unordered_map<tflite::BuiltinOperator, int> operators_versions_;
 };
 
 std::string Translator::UniqueName(mlir::Value val) {
@@ -1706,12 +1714,13 @@ Optional<std::string> Translator::Translate(
     bool emit_custom_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
                         emit_custom_ops, select_user_tf_ops, tags,
-                        op_or_arg_name_mapper);
+                        operators_versions, op_or_arg_name_mapper);
   return translator.TranslateInternal();
 }
 
@@ -1829,9 +1838,10 @@ Optional<std::string> Translator::TranslateInternal() {
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
-  // TODO Add possibility to use a specific version. Error-out if the requested
-  // version is smaller than GetBuiltinOperatorVersion.
-  tflite::UpdateOpVersion(builder_.GetBufferPointer());
+  // TODO UpdateOpVersion is based on the non-quantized operator signature.
+  // The quantized op version should also be compared to the requested version.
+  // TODO Check if version in operators_versions_ is valid.
+  tflite::UpdateOpVersion(builder_.GetBufferPointer(), operators_versions_);
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
@@ -1952,11 +1962,12 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      op_or_arg_name_mapper);
+      operators_versions, op_or_arg_name_mapper);
 }
 
 bool tflite::MlirToFlatBufferTranslateFunction(
@@ -1966,18 +1977,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      &op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags) {
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, saved_model_tags,
+      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{}, {},
       &op_or_arg_name_mapper);
 }
 
@@ -1985,12 +1985,26 @@ bool tflite::MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>&
+        operators_versions) {
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
+  return MlirToFlatBufferTranslateFunction(
+      module, serialized_flatbuffer, emit_builtin_tflite_ops,
+      emit_select_tf_ops, emit_custom_ops, saved_model_tags, operators_versions,
+      &op_or_arg_name_mapper);
+}
+
+bool tflite::MlirToFlatBufferTranslateFunction(
+    mlir::ModuleOp module, std::string* serialized_flatbuffer,
+    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
   std::unordered_set<std::string> select_user_tf_ops;
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, select_user_tf_ops, saved_model_tags,
-      op_or_arg_name_mapper);
+      operators_versions, op_or_arg_name_mapper);
 }
 
 bool tflite::MlirToFlatBufferTranslateFunction(
@@ -1998,10 +2012,12 @@ bool tflite::MlirToFlatBufferTranslateFunction(
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper) {
   auto maybe_translated = Translator::Translate(
       module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
-      select_user_tf_ops, saved_model_tags, op_or_arg_name_mapper);
+      select_user_tf_ops, saved_model_tags, operators_versions,
+      op_or_arg_name_mapper);
   if (!maybe_translated) return true;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return false;

@@ -53,6 +53,7 @@ from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
+from tensorflow.lite.python.ops import Ops
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
 from tensorflow.lite.python.util import convert_debug_info_func as _convert_debug_info_func
@@ -432,6 +433,7 @@ class TFLiteConverterBase(object):
     self._experimental_new_quantizer = False
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
+    self.operators_versions = {}
     self._debug_info = None  # contains the stack traces of all the original
     # nodes in the `GraphDef` to the converter.
     self.saved_model_dir = None
@@ -644,6 +646,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
 
     converter_kwargs = self._get_base_converter_args()
     converter_kwargs.update(quant_mode.converter_flags())
+    converter_kwargs["operators_versions"] = self.operators_versions
     if not self.experimental_new_converter:
       logging.warning(
           "Please consider switching to the new converter by setting "

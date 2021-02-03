@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
@@ -474,6 +475,33 @@ int TfLiteTypeGetSize(TfLiteType type) {
       return 16;
     default:
       return 0;
+  }
+}
+
+int GetOpVersionFromContext(const TfLiteContext* context,
+                            const TfLiteNode* node) {
+  const Subgraph* subgraph = reinterpret_cast<const Subgraph*>(context->impl_);
+  for (const auto& node_reg : subgraph->nodes_and_registration()) {
+    if (&node_reg.first == node) {
+      return node_reg.second.version;
+    }
+  }
+
+  return 1; // TODO
+}
+
+int GetMultiplyByQuantMultiplierRefVersion(BuiltinOperator op, int op_version) {
+  switch(op) {
+    case BuiltinOperator_ADD:
+    case BuiltinOperator_MUL:
+      if (op_version >= 5) {
+        return 2;
+      }
+      else {
+        return 1;
+      }
+    default:
+      return 1;
   }
 }
 

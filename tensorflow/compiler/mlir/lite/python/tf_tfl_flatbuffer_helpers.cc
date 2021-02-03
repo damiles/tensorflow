@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
 #include <ostream>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
@@ -312,10 +314,18 @@ Status ConvertMLIRToTFLiteFlatBuffer(
   }
   pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
+  std::unordered_map<tflite::BuiltinOperator, int> operators_versions;
+  for (int i = 0; i < toco_flags.operators_versions_size(); i++) {
+    const auto& ov = toco_flags.operators_versions(i);
+    const auto op = static_cast<tflite::BuiltinOperator>(ov.op_id());
+    operators_versions[op] = ov.op_version();
+  }
+
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
-      pass_config.quant_specs, saved_model_tags, result, &pm);
+      pass_config.quant_specs, saved_model_tags, operators_versions, result,
+      &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

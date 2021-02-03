@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -38,12 +40,14 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
 bool MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags);
+    const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions);
 
 // Same as the above but with a custom op name mapper.
 bool MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 
 // Same as above but takes SavedModel tags of the model.
@@ -51,6 +55,7 @@ bool MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 
 // Same as the above but with a list of allowed user's defined ops.
@@ -59,6 +64,7 @@ bool MlirToFlatBufferTranslateFunction(
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 }  // namespace tflite
 

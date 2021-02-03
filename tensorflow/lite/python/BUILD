@@ -174,6 +174,7 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
+        ":ops",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
@@ -380,6 +381,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],
+)
+
+py_library(
+    name = "ops",
+    srcs = ["ops.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 py_test(

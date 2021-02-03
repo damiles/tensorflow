@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -66,6 +67,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     std::string* result, mlir::PassManager* pass_manager);
 }  // namespace tensorflow
 

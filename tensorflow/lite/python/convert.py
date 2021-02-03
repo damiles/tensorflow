@@ -322,6 +322,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      target_ops=None,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
+                     operators_versions={},
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -355,6 +356,12 @@ def build_toco_flags(inference_type=dtypes.float32,
       toco.enable_select_tf_ops = True
     if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
       toco.force_select_tf_ops = True
+  for op, version in operators_versions.items():
+    op_ver = _toco_flags_pb2.TocoFlags.OperatorVersion()
+    op_ver.op_id = int(op)
+    op_ver.op_version = version
+    toco.operators_versions.append(op_ver)
+
   return toco
 
 
@@ -384,7 +391,8 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_version=0,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
-                              select_user_tf_ops=None):
+                              select_user_tf_ops=None,
+                              operators_versions={}):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -483,7 +491,8 @@ def build_toco_convert_protos(input_tensors,
                           allow_custom_ops, custom_opdefs,
                           post_training_quantize, quantize_to_float16,
                           dump_graphviz_dir, dump_graphviz_video, target_ops,
-                          conversion_summary_dir, select_user_tf_ops)
+                          conversion_summary_dir, select_user_tf_ops,
+                          operators_versions)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):

@@ -140,6 +140,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
+    const std::unordered_map<tflite::BuiltinOperator, int>& operators_versions,
     std::string* result, mlir::PassManager* pass_manager) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
@@ -175,7 +176,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
             emit_custom_ops, select_user_tf_ops, saved_model_tags,
-            &op_or_arg_name_mapper)) {
+            operators_versions, &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
@@ -185,7 +186,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, &pre_quantized_result, emit_builtin_tflite_ops,
             emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
-            saved_model_tags, &op_or_arg_name_mapper)) {
+            saved_model_tags, operators_versions, &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);

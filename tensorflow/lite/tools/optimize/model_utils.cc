@@ -143,6 +143,11 @@ void SetOperatorCodeVersion(ModelT* model) {
         // Only update the versions of quantizable operations if the original
         // version is lesser than minimum quantized one mentioned by
         // OperatorProperty.
+
+        // TODO Compare to requested version.
+        // Manage int16 as currently if the op has int8 quantization support
+        // since version 2 for example and from version 4 for int16,
+        // the assigned version will be 2 even if we use int16 quantization.
         op_code->version = property.version;
       }
     }
