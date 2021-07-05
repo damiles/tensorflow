@@ -626,6 +626,7 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/lower_to_table.cc",
         "transforms/modify_io_nodes.cc",
         "transforms/optimize_op_order.cc",
         "transforms/post_quantize.cc",
@@ -634,6 +635,7 @@ cc_library(
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
+        "transforms/lower_to_table.h",
         "transforms/passes.h",
         "transforms/prepare_quantize_helper.h",
     ],
@@ -643,6 +645,7 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
