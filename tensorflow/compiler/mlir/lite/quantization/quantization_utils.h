@@ -48,6 +48,25 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
+
+/**
+ * Copied from
+ * external/llvm-project/mlir/lib/Dialect/Quant/Utils/FakeQuantSupport.cpp and
+ * adapted for 4-bit. Quick hack to avoid having to modify
+ * external/llvm-project.
+ *
+ * FIXME Temp hack
+ */
+UniformQuantizedType fakeQuantAttrsToTypeWith4BitSupport(
+    Location loc, unsigned numBits, double rmin, double rmax, bool narrowRange,
+    Type expressedType, bool isSigned = false);
+
+UniformQuantizedPerAxisType fakeQuantAttrsToTypeWith4BitSupport(
+    Location loc, unsigned numBits, int32_t quantizedDimension,
+    ArrayRef<double> rmins, ArrayRef<double> rmax, bool narrowRange,
+    Type expressedType, bool isSigned = false);
+
+
 // A unit attribute can be attached to the quantize/dequantize ops which are
 // added by the quantization passes. These ops can be removed erased without
 // losing accuracy.
@@ -146,9 +165,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
-      quant_type =
-          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
-                                      maxs, narrow_range, expressed, is_signed);
+      quant_type = fakeQuantAttrsToTypeWith4BitSupport(
+          op.getLoc(), num_bits, *op.axis(), mins, maxs, narrow_range,
+          expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
@@ -161,9 +180,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       rmin = std::min(rmin, 0.0);
       rmax = std::max(rmax, 0.0);
       TensorRangeSanityCheck(op, rmin, rmax);
-      quant_type =
-          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
-                                      narrow_range, expressed, is_signed);
+      quant_type = fakeQuantAttrsToTypeWith4BitSupport(op.getLoc(), num_bits,
+                                                       rmin, rmax, narrow_range,
+                                                       expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
@@ -488,6 +507,16 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!qtype || qtype.isSigned()) return failure();
 
     int num_bits = qtype.getStorageTypeIntegralWidth();
+
+    // As int4 is not supported, replace uint4 with int8 storage type instead
+    // but keep the [-8;7] range restriction.
+    // FIXME Temp hack
+    Type storageType = qtype.getStorageType();
+    if (qtype.getStorageType().isInteger(4)) {
+      storageType = mlir::IntegerType::get(qtype.getStorageType().getContext(),
+                                           8, mlir::IntegerType::Signless);
+    }
+
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.
     int64_t offset =
@@ -498,7 +527,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     QType new_qtype;
     if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
       new_qtype = quant::UniformQuantizedType::getChecked(
-          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, storageType, qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
           uqtype.getStorageTypeMax() - offset);
@@ -511,7 +540,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
         new_zero_points[i] -= offset;
       }
       new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
-          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, storageType, qtype.getExpressedType(),
           aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
           aqtype.getStorageTypeMin() - offset,
           aqtype.getStorageTypeMax() - offset);
