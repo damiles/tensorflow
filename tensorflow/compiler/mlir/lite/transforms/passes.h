@@ -146,6 +146,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
 // Creates unfold large constant pass, which will replace large splat constant
 // tensors with fill op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
+
+// Create a pass that convert x/y operations to x*1/y when
+// quant_specs.inference_type is QINT8 or QINT16.
+std::unique_ptr<OperationPass<FuncOp>> CreateDivToMulReciprocalPass(
+    const QuantizationSpecs& quant_specs);
 }  // namespace TFL
 
 }  // namespace mlir

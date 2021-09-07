@@ -594,6 +594,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_optimize",
     srcs = [
+        "transforms/div_to_mul.cc",
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
     ],
@@ -601,9 +602,11 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":constant_utils",
         ":convert_type",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
@@ -625,6 +628,7 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/lower_to_table.cc",
         "transforms/modify_io_nodes.cc",
         "transforms/optimize_op_order.cc",
         "transforms/post_quantize.cc",
@@ -633,6 +637,7 @@ cc_library(
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
+        "transforms/lower_to_table.h",
         "transforms/passes.h",
         "transforms/prepare_quantize_helper.h",
     ],
@@ -645,6 +650,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:operator_property",
         "@com_google_absl//absl/container:flat_hash_set",

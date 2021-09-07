@@ -307,6 +307,14 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     // model dialect.
     pass_manager->addPass(
         mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
+
+    // TODO Add conditionally? Mainly useful to convert x/y to x * 1/y to x *
+    // TABLE for quantized types. It needs to be done before calibration as we
+    // need the range of 1/y. Could we use another way to get this range? We
+    // only need to know the closest negative and positive 'y' go to 0 during
+    // the calibration phase.
+    pass_manager->addPass(
+        mlir::TFL::CreateDivToMulReciprocalPass(pass_config.quant_specs));
   }
   if (pass_config.unfold_large_splat_constant) {
     pass_manager->addPass(mlir::TFL::CreateUnfoldLargeSplatConstantPass());

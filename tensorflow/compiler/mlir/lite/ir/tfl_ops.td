@@ -1480,7 +1480,6 @@ def TFL_DivOp : TFL_Op<"div", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
     NoSideEffect,
-    NoQuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Division operator";
 
@@ -1570,8 +1569,7 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
 def TFL_ExpOp: TFL_Op<"exp", [
     NoSideEffect,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1581,6 +1579,17 @@ def TFL_ExpOp: TFL_Op<"exp", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let hasOptions = 0b1;
 }
@@ -1979,8 +1988,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 def TFL_LogOp: TFL_Op<"log", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -2542,8 +2550,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
 def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
     NoSideEffect,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoQuantizableResult]> {
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2975,8 +2982,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -2986,6 +2992,17 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let hasFolder = 1;
 }

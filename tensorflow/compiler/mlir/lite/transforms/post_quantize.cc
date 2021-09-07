@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/lower_to_table.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 //===----------------------------------------------------------------------===//
@@ -235,6 +236,10 @@ void PostQuantizePass::runOnFunction() {
       .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
           ctx);
   patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  const bool lower_to_table = true;
+  if (lower_to_table) {
+    populateWithLowerToTable(ctx, patterns);
+  }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
