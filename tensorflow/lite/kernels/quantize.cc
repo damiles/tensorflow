@@ -129,9 +129,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(
           context, output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
     }
-    const double effective_output_scale =
-        static_cast<double>(input->params.scale) /
-        static_cast<double>(output->params.scale);
+
+    double effective_output_scale;
+    if (input->quantization.type == kTfLiteNoQuantization) {
+      TF_LITE_ENSURE_EQ(context, input->params.scale, 0.0);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      effective_output_scale = 1.0 / static_cast<double>(output->params.scale);
+    } else {
+      effective_output_scale = static_cast<double>(input->params.scale) /
+                               static_cast<double>(output->params.scale);
+    }
+
     QuantizeMultiplier(effective_output_scale, &data->output_multiplier,
                        &data->output_shift);
   }

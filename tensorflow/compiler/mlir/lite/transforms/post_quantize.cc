@@ -222,6 +222,70 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
   }
 };
 
+// Optimize uint8 -> float32 cast operators before float32 -> int8 quantization
+// operators to a single uint8 -> int8 quiantization operator.
+//
+// TODO Add support for int8 inputs and other quantized outputs.
+struct RemoveCastBeforeQuant : public OpRewritePattern<QuantizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(QuantizeOp quantize_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if cast from uint8 -> float32
+    CastOp cast_op =
+        dyn_cast_or_null<CastOp>(quantize_op.input().getDefiningOp());
+    if (!cast_op) {
+      return failure();
+    }
+
+    auto cast_input_ty = cast_op.input().getType().dyn_cast<mlir::TensorType>();
+    if (!cast_input_ty ||
+        !cast_input_ty.getElementType().isUnsignedInteger(8)) {
+      return failure();
+    }
+
+    auto cast_output_ty =
+        cast_op.output().getType().dyn_cast<mlir::TensorType>();
+    if (!cast_output_ty || !cast_output_ty.getElementType().isF32()) {
+      return failure();
+    }
+
+    // Check if quantization from float32 -> int8
+    auto quant_type = quant::UniformQuantizedType::getQuantizedElementType(
+        quantize_op.output().getType());
+    if (!quant_type) {
+      return failure();
+    }
+
+    auto uquant_type = quant_type.dyn_cast<quant::UniformQuantizedType>();
+    if (!uquant_type) {
+      return failure();
+    }
+
+    if (uquant_type.getStorageType().isSignedInteger(8)) {
+      return failure();
+    }
+
+    // Rewrite QuantizeOp to directly go from uint8 -> int8
+    auto new_uquant_type = mlir::quant::UniformQuantizedType::get(
+        uquant_type.getFlags(), uquant_type.getStorageType(),
+        rewriter.getIntegerType(8, false), uquant_type.getScale(),
+        uquant_type.getZeroPoint(), uquant_type.getStorageTypeMin(),
+        uquant_type.getStorageTypeMax());
+
+    auto new_uquant_tensor =
+        RankedTensorType::get(quantize_op.qtype().getShape(), new_uquant_type);
+
+    // TODO Also propagate other attributes in
+    // QuantizeOpAdaptor(quantize_op).getAttributes()
+    rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(
+        quantize_op, quantize_op.output().getType(), cast_op.input(),
+        mlir::TypeAttr::get(new_uquant_tensor));
+
+    return failure();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
@@ -235,6 +299,7 @@ void PostQuantizePass::runOnFunction() {
       .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
           ctx);
   patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  patterns.insert<RemoveCastBeforeQuant>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
