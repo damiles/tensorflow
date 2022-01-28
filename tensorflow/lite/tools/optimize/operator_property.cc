@@ -196,6 +196,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_EXP:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_FILL: {
       property.inputs = {{1, {}}};
       property.outputs = {{0, {}}};
