@@ -64,6 +64,8 @@ class ModelAnalyzer():
   def analyze(model_path=None,
               model_content=None,
               gpu_compatibility=False,
+              # Change API?
+              tosa_compatibility=False,
               **kwargs):
     """Analyzes the given tflite_model with dumping model structure.
 
@@ -102,4 +104,4 @@ class ModelAnalyzer():
     else:
       print(
           _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
-                                          gpu_compatibility))
+                                          gpu_compatibility, tosa_compatibility))

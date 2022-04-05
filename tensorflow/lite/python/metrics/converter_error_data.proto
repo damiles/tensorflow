@@ -33,6 +33,7 @@ message ConverterErrorData {
     // the given backends in TocoFlags.supported_backends, the error will be
     // raised.
     ERROR_GPU_NOT_COMPATIBLE = 200;
+    ERROR_TOSA_NOT_COMPATIBLE = 201;
   }
 
   // Information about the op where the error occurs.

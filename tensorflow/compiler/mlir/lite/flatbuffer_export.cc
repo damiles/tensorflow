@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
+#include "tensorflow/lite/tools/versioning/tosa_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
@@ -643,6 +644,8 @@ class Translator {
 
   // Check compatibility with GPU delegate and returns the compatibility.
   bool CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer);
+
+  bool CheckTOSACompatibility(uint8_t* model_buffer_pointer);
 
   ModuleOp module_;
 
@@ -1811,6 +1814,33 @@ bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
   return gpu_compatibile;
 }
 
+// TODO Avoid code duplication with CheckGpuDelegateCompatibility
+bool Translator::CheckTOSACompatibility(uint8_t* model_buffer_pointer) {
+  bool tosa_compatibile = true;
+  auto model = tflite::GetModel(model_buffer_pointer);
+  auto subgraphs = model->subgraphs();
+
+  for (int i = 0; i < subgraphs->Length(); ++i) {
+    const tflite::SubGraph* subgraph = subgraphs->Get(i);
+    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+      const tflite::Operator* op = subgraph->operators()->Get(j);
+      const tflite::OperatorCode* op_code =
+          model->operator_codes()->Get(op->opcode_index());
+      auto status =
+          tflite::CheckTOSACompatibility(op_code, op, subgraph, model);
+      if (!status.ok()) {
+        tosa_compatibile = false;
+        auto inst = subgraph_op_inst_map_[i][j];
+        tfl::AttachErrorCode(
+            inst->emitOpError()
+                << "is not TOSA compatible: " << std::string(status.message()),
+            tflite::metrics::ConverterErrorData::ERROR_TOSA_NOT_COMPATIBLE);
+      }
+    }
+  }
+  return tosa_compatibile;
+}
+
 Optional<std::string> Translator::TranslateInternal() {
   // A list of named regions in the module with main function being the first in
   // the list. The main function is required as the first subgraph in the model
@@ -2019,6 +2049,15 @@ Optional<std::string> Translator::TranslateInternal() {
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
   if (supported_backends_.find("GPU") != supported_backends_.end()) {
     if (!CheckGpuDelegateCompatibility(builder_.GetBufferPointer())) {
+      return llvm::None;
+    }
+  }
+  // Manage TOSA version? Pass a string like "TOSA v1.0", replace
+  // supported_backends_ std::unordered_set to std::set and search with
+  // supported_backends_.lower_bound("TOSA"), extract version from there?
+  // Modify front-end API?
+  if (supported_backends_.find("TOSA") != supported_backends_.end()) {
+    if (!CheckTOSACompatibility(builder_.GetBufferPointer())) {
       return llvm::None;
     }
   }

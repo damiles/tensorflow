@@ -132,3 +132,27 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "tosa_compatibility",
+    srcs = [
+        "tosa_compatibility.cc",
+    ],
+    hdrs = [
+        "tosa_compatibility.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":op_signature",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+    ],
+)

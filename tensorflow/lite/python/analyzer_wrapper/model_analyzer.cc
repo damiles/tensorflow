@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
+#include "tensorflow/lite/tools/versioning/tosa_compatibility.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -313,8 +314,13 @@ class StreamErrorReporter : public ErrorReporter {
 };
 
 std::string model_analyzer(const std::string& model_file_or_buffer,
-                           bool input_is_filepath,
-                           bool check_gpu_compatibility) {
+                           bool input_is_filepath, bool check_gpu_compatibility,
+                           bool check_tosa_compatibility) {
+  // TODO Convert FlatBuffer to MLIR representation with FlatBufferFileToMlir
+  // Legalize the model with mlir::tosa::registerTFLtoTOSALegalizationPipeline
+  // and check which ops couldn't be converted? How could we manage the TOSA
+  // version we analyze the model for?
+
   std::stringstream out_stream;
   StreamErrorReporter error_reporter(&out_stream);
   std::unique_ptr<FlatBufferModel> fb_model;
@@ -341,9 +347,12 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
 
   dump_model_summary(out_stream, model);
 
+  // TODO Generalize the platform compatibility check
   bool model_is_gpu_compatibile = true;
+  bool model_is_tosa_compatibile = true;
   for (int i = 0; i < subgraphs->Length(); ++i) {
     std::vector<int> gpu_incompatibile_nodes;
+    std::vector<int> tosa_incompatibile_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
     out_stream << subgraph_str(i);
     if (subgraph->name()) {
@@ -369,6 +378,14 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                      << "\n";
         }
       }
+      if (check_tosa_compatibility) {
+        auto status = CheckTOSACompatibility(op_code, op, subgraph, model);
+        if (!status.ok()) {
+          tosa_incompatibile_nodes.push_back(j);
+          out_stream << "TOSA COMPATIBILITY WARNING: " << status.message()
+                     << "\n";
+        }
+      }
     }
     if (!gpu_incompatibile_nodes.empty()) {
       model_is_gpu_compatibile = false;
@@ -377,6 +394,12 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                  << absl::StrJoin(gpu_incompatibile_nodes, ", ")
                  << " with TFLite runtime version " << TF_VERSION_STRING
                  << "\n";
+    }
+    if (!tosa_incompatibile_nodes.empty()) {
+      model_is_tosa_compatibile = false;
+      out_stream << "\nTOSA COMPATIBILITY WARNING: Subgraph#" << i
+                 << " has TOSA compatibility issues at nodes "
+                 << absl::StrJoin(tosa_incompatibile_nodes, ", ") << "\n";
     }
 
     // Dump Subgraph Tensors.
@@ -395,6 +418,10 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
         << " with TFLite runtime version " << TF_VERSION_STRING
         << ".\nBut it doesn't guarantee that your model works well with GPU "
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
+  }
+  if (check_tosa_compatibility && model_is_tosa_compatibile) {
+    out_stream
+        << "\nYour model looks compatibile with the TOSA specification.\n";
   }
 
   dump_model_signature_defs(out_stream, model);

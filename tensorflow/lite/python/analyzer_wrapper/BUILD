@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/tools/versioning:gpu_compatibility",
+        "//tensorflow/lite/tools/versioning:tosa_compatibility",
         "@com_google_absl//absl/strings",
     ],
 )

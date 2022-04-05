@@ -23,7 +23,8 @@ namespace tflite {
 // It examines the model file itself without instantiating TFLite interpreters.
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
-                           bool check_gpu_compatibility);
+                           bool check_gpu_compatibility,
+                           bool check_tosa_compatibility);
 
 }  // namespace tflite
 
