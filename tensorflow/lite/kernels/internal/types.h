@@ -913,6 +913,18 @@ struct ResizeBilinearParams {
   // yields more accurate resizes. Corresponds to the same argument for the
   // original TensorFlow op in TF2.0.
   bool half_pixel_centers;
+
+  // Quantized kernel
+  int scale_y_n;
+  int scale_y_d;
+  int scale_x_n;
+  int scale_x_d;
+
+  int offset_y;
+  int offset_x;
+
+  int32_t output_multiplier;
+  int output_shift;
 };
 
 struct ResizeNearestNeighborParams {

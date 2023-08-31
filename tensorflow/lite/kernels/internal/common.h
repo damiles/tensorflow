@@ -1353,6 +1353,15 @@ void optimized_ops_prefetch_write_l1_keep(const T* ptr) {
 #endif
 }
 
+inline int64_t IntFloorDiv(int64_t lhs, int64_t rhs) {
+  int64_t out = lhs / rhs;
+  if (out * rhs > lhs) {
+    --out;
+  }
+
+  return out;
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_

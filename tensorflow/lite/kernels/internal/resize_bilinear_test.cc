@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_utils.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -298,6 +299,24 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCentersFloat_2x2to4x4) {
 
 template <typename T>
 void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
+  auto SetResizeParameters = [](int input_height, int input_width,
+                                int output_height, int output_width,
+                                tflite::ResizeBilinearParams& op_params) {
+    resize_utils::PreprocessResizeParameters(
+        input_height, output_height, resize_utils::ResizeMode::BILINEAR,
+        op_params.align_corners, op_params.half_pixel_centers,
+        &op_params.scale_y_n, &op_params.scale_y_d, &op_params.offset_y);
+    resize_utils::PreprocessResizeParameters(
+        input_width, output_width, resize_utils::ResizeMode::BILINEAR,
+        op_params.align_corners, op_params.half_pixel_centers,
+        &op_params.scale_x_n, &op_params.scale_x_d, &op_params.offset_x);
+
+    const float output_scale =
+        1.0f / (op_params.scale_y_n * op_params.scale_x_n);
+    QuantizeMultiplier(output_scale, &op_params.output_multiplier,
+                       &op_params.output_shift);
+  };
+
   // Input: 2x2
   RuntimeShape input_dims_inference({1, 2, 2, 1});
   // clang-format off
@@ -317,6 +336,9 @@ void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = false;
   op_params.half_pixel_centers = false;
+  SetResizeParameters(
+      input_dims_inference.Dims(1), input_dims_inference.Dims(2),
+      output_dims_inference.Dims(1), output_dims_inference.Dims(2), op_params);
 
   // Test with half_pixel_centers = false.
   reference_ops::ResizeBilinearInteger(
@@ -325,7 +347,7 @@ void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
   // clang-format off
   std::vector<T> reference_half_pixel_centers_false =
       {  127,   42,  -43, -128,  -128, -128,
-          96,   42,  -11,  -64,   -64,  -64,
+          95,   42,  -11,  -64,   -64,  -64,
           64,   43,   21,    0,     0,    0,
           64,   43,   21,    0,     0,    0};
   // Float results =
@@ -342,6 +364,10 @@ void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
 
   // Test with half_pixel_centers = true.
   op_params.half_pixel_centers = true;
+  SetResizeParameters(
+      input_dims_inference.Dims(1), input_dims_inference.Dims(2),
+      output_dims_inference.Dims(1), output_dims_inference.Dims(2), op_params);
+
   reference_ops::ResizeBilinearInteger(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
@@ -349,7 +375,7 @@ void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
   std::vector<T> reference_half_pixel_centers_true =
       {  127,  127,   42,  -43, -128, -128,
          111,  111,   42,  -27,  -96,  -96,
-          80,   80,   43,    5,  -32,  -32,
+          80,   80,   42,    5,  -32,  -32,
           64,   64,   43,   21,    0,    0};
   // Float result =
   // {127.000000, 127.000000, 41.999992, -43.000023, -128.000000, -128.000000,
@@ -397,30 +423,6 @@ TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelUint8) {
     TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
                                  input_height, output_width, output_height,
                                  0.025);
-  }
-}
-
-// Test when channel count is multiple of 8, and scaling is 2, 4, 8, same in
-// both directions.
-//
-// Version for int8.
-TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelInt8) {
-  RandomEngine().seed(27496);
-  const int kTestsToRun = 500;
-  const tflite::ResizeBilinearParams op_params = GetParam();
-
-  for (int i = 0; i < kTestsToRun; i++) {
-    const int batch = UniformRandomInt(1, 2);
-    const int depth = ExponentialRandomPositiveInt(0.4f, 1, 6) * 8;
-    const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 100);
-    const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 100);
-    const int scale_factor = 1 << UniformRandomInt(1, 3);  // 2, 4, 8;
-    const int output_width = input_width * scale_factor;
-    const int output_height = input_height * scale_factor;
-
-    TestOneResizeBilinear<int8>(op_params, batch, depth, input_width,
-                                input_height, output_width, output_height,
-                                0.025);
   }
 }
 

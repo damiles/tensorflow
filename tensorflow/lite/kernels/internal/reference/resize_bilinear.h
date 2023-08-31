@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -116,22 +117,6 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   }
 }
 
-inline void ComputeInterpolationValuesInteger(
-    const int32_t value, const int32_t scale_10, const bool half_pixel_centers,
-    int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
-    int32_t* upper_bound) {
-  if (half_pixel_centers) {
-    *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
-  } else {
-    *scaled_value = value * scale_10;
-  }
-  constexpr int32_t zero = 0;
-  *lower_bound = std::max(*scaled_value / (1 << 10), zero);
-  *upper_bound =
-      std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
-}
-
-// Same as above but doesn't use any floating-point for the resize
 template <typename T>
 inline void ResizeBilinearInteger(
     const tflite::ResizeBilinearParams& op_params,
@@ -139,6 +124,9 @@ inline void ResizeBilinearInteger(
     const RuntimeShape& unextended_output_size_shape,
     const int32_t* output_size_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
+  static constexpr int32_t kMinOutput = std::numeric_limits<T>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<T>::max();
+
   // If half_pixel_centers is True, align_corners must be False.
   TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
@@ -165,62 +153,40 @@ inline void ResizeBilinearInteger(
   const int32_t output_width =
       output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
 
-  int32_t height_scale_10 =
-      ((1 << 10) * input_height + output_height / 2) / output_height;
-  int32_t width_scale_10 =
-      ((1 << 10) * input_width + output_width / 2) / output_width;
-  if (op_params.align_corners && output_height > 1) {
-    height_scale_10 =
-        ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
-        (output_height - 1);
-  }
-  if (op_params.align_corners && output_width > 1) {
-    width_scale_10 = ((1 << 10) * (input_width - 1) + (output_width - 1) / 2) /
-                     (output_width - 1);
-  }
-
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      int32_t input_y, y0, y1;
-      ComputeInterpolationValuesInteger(y, height_scale_10,
-                                        op_params.half_pixel_centers,
-                                        input_height, &input_y, &y0, &y1);
+      const int64_t sy = y * op_params.scale_y_d + op_params.offset_y;
+      const int64_t iy = IntFloorDiv(sy, op_params.scale_y_n);
+      const int64_t ry = sy - iy * op_params.scale_y_n;
+      const int32_t iy0 = std::max<int32_t>(iy, 0);
+      const int32_t iy1 =
+          static_cast<int32_t>(std::min<int64_t>(iy + 1, input_height - 1));
+
       for (int x = 0; x < output_width; ++x) {
-        int32_t input_x, x0, x1;
-        ComputeInterpolationValuesInteger(x, width_scale_10,
-                                          op_params.half_pixel_centers,
-                                          input_width, &input_x, &x0, &x1);
+        const int64_t sx = x * op_params.scale_x_d + op_params.offset_x;
+        const int64_t ix = IntFloorDiv(sx, op_params.scale_x_n);
+        const int64_t rx = sx - ix * op_params.scale_x_n;
+        const int32_t ix0 = std::max<int32_t>(ix, 0);
+        const int32_t ix1 =
+            static_cast<int32_t>(std::min<int64_t>(ix + 1, input_width - 1));
+
         for (int c = 0; c < depth; ++c) {
-          const int64_t output_20_ll =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y0, x0, c)]) *
-              ((1 << 10) - (input_y - (1 << 10) * y0)) *
-              ((1 << 10) - (input_x - (1 << 10) * x0));
-          const int64_t output_20_lu =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y1, x0, c)]) *
-              (input_y - (1 << 10) * y0) *
-              ((1 << 10) - (input_x - (1 << 10) * x0));
-          const int64_t output_20_rl =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y0, x1, c)]) *
-              ((1 << 10) - (input_y - (1 << 10) * y0)) *
-              (input_x - (1 << 10) * x0);
-          const int64_t output_20_ru =
-              static_cast<int64_t>(
-                  input_data[Offset(input_shape, b, y1, x1, c)]) *
-              (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
-          const int64_t output_20 =
-              output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-#if TFLITE_SINGLE_ROUNDING
-          const int64_t round = 1 << 19;
-          const T interpolation = static_cast<T>((output_20 + round) >> 20);
-#else
-          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
-          const T interpolation =
-              static_cast<T>((output_20 + round) / (1 << 20));
-#endif  // TFLITE_SINGLE_ROUNDING
-          output_data[Offset(output_shape, b, y, x, c)] = interpolation;
+          const T v00 = input_data[Offset(input_shape, b, iy0, ix0, c)];
+          const T v01 = input_data[Offset(input_shape, b, iy0, ix1, c)];
+          const T v10 = input_data[Offset(input_shape, b, iy1, ix0, c)];
+          const T v11 = input_data[Offset(input_shape, b, iy1, ix1, c)];
+
+          int64_t acc = 0;
+          acc += v00 * (op_params.scale_y_n - ry) * (op_params.scale_x_n - rx);
+          acc += v01 * (op_params.scale_y_n - ry) * rx;
+          acc += v10 * ry * (op_params.scale_x_n - rx);
+          acc += v11 * ry * rx;
+
+          const int32_t interpolated = MultiplyByQuantizedMultiplier(
+              acc, op_params.output_multiplier, op_params.output_shift);
+          const int32_t clamped_interpolated =
+              std::max(std::min(interpolated, kMaxOutput), kMinOutput);
+          output_data[Offset(output_shape, b, y, x, c)] = clamped_interpolated;
         }
       }
     }

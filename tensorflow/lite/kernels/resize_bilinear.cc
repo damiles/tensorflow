@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/resize_bilinear.h"
 // clang-format on
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -39,9 +40,30 @@ enum KernelType {
   kOptimized,
 };
 
+struct OpData {
+  int scale_y_n;
+  int scale_y_d;
+  int scale_x_n;
+  int scale_x_d;
+
+  int offset_y;
+  int offset_x;
+
+  int32_t output_multiplier;
+  int output_shift;
+};
+
 constexpr int kInputTensor = 0;
 constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
 
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
@@ -59,7 +81,41 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   return context->ResizeTensor(context, output, output_size);
 }
 
+TfLiteStatus PrepareQuantized(TfLiteContext* context, const TfLiteTensor* input,
+                              const TfLiteTensor* size,
+                              const TfLiteResizeBilinearParams* params,
+                              OpData* data) {
+  const int32_t* size_data = GetTensorData<int32_t>(size);
+  const int input_height = GetTensorShape(input).Dims(1);
+  const int output_height = size_data[0];
+  const int input_width = GetTensorShape(input).Dims(2);
+  const int output_width = size_data[1];
+
+  resize_utils::PreprocessResizeParameters(
+      input_height, output_height, resize_utils::ResizeMode::BILINEAR,
+      params->align_corners, params->half_pixel_centers, &data->scale_y_n,
+      &data->scale_y_d, &data->offset_y);
+  resize_utils::PreprocessResizeParameters(
+      input_width, output_width, resize_utils::ResizeMode::BILINEAR,
+      params->align_corners, params->half_pixel_centers, &data->scale_x_n,
+      &data->scale_x_d, &data->offset_x);
+
+  TF_LITE_ENSURE(context, data->scale_y_n <= (1 << 15));
+  TF_LITE_ENSURE(context, data->scale_x_n <= (1 << 15));
+
+  const float output_scale = 1.0f / (data->scale_y_n * data->scale_x_n);
+  QuantizeMultiplier(output_scale, &data->output_multiplier,
+                     &data->output_shift);
+
+  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  auto* params =
+      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -76,8 +132,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
 
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
-  // ResizeBilinear creates a float tensor even when the input is made of
-  // integers.
   output->type = input->type;
 
   if (!IsConstantOrPersistentTensor(size)) {
@@ -86,12 +140,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Ensure params are valid.
-  auto* params =
-      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
   if (params->half_pixel_centers && params->align_corners) {
     TF_LITE_KERNEL_LOG(
         context, "If half_pixel_centers is True, align_corners must be False.");
     return kTfLiteError;
+  }
+
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_OK(context,
+                      PrepareQuantized(context, input, size, params, data));
   }
 
   return ResizeOutputTensor(context, input, size, output);
@@ -101,6 +158,7 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -110,16 +168,32 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* size;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
 
+  if (!IsConstantTensor(size)) {
+    if (output->type == kTfLiteInt8 || output->type == kTfLiteInt16) {
+      TF_LITE_ENSURE_OK(context,
+                        PrepareQuantized(context, input, size, params, data));
+    }
+  }
+
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutputTensor(context, input, size, output));
   }
 
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = params->align_corners;
+  op_params.half_pixel_centers = params->half_pixel_centers;
+  op_params.scale_y_n = data->scale_y_n;
+  op_params.scale_y_d = data->scale_y_d;
+  op_params.scale_x_n = data->scale_x_n;
+  op_params.scale_x_d = data->scale_x_d;
+  op_params.offset_y = data->offset_y;
+  op_params.offset_x = data->offset_x;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+
   if (output->type == kTfLiteFloat32) {
 #define TF_LITE_RESIZE_BILINEAR(type, opname, datatype)              \
-  tflite::ResizeBilinearParams op_params;                            \
-  op_params.align_corners = params->align_corners;                   \
-  op_params.half_pixel_centers = params->half_pixel_centers;         \
   type::opname(op_params, GetTensorShape(input),                     \
                GetTensorData<datatype>(input), GetTensorShape(size), \
                GetTensorData<int32>(size), GetTensorShape(output),   \
@@ -137,11 +211,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, uint8_t);
     }
   } else if (output->type == kTfLiteInt8) {
-    if (kernel_type == kReference) {
-      TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int8_t);
-    } else if (kernel_type == kOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, int8_t);
-    }
+    TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int8_t);
   } else if (output->type == kTfLiteInt16) {
     TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
@@ -158,14 +228,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_RESIZE_BILINEAR_REF() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, resize_bilinear::Prepare,
+      resize_bilinear::Init, resize_bilinear::Free,
+      resize_bilinear::Prepare<resize_bilinear::kReference>,
       resize_bilinear::Eval<resize_bilinear::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_RESIZE_BILINEAR() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, resize_bilinear::Prepare,
+      resize_bilinear::Init, resize_bilinear::Free,
+      resize_bilinear::Prepare<resize_bilinear::kOptimized>,
       resize_bilinear::Eval<resize_bilinear::kOptimized>};
   return &r;
 }

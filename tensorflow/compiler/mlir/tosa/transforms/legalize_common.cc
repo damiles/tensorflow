@@ -58,6 +58,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_utils.h"
 
 namespace mlir {
 namespace tosa {
@@ -3313,70 +3315,23 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   size_t input_width = input_shape[2];
   size_t output_height = output_shape[1];
   size_t output_width = output_shape[2];
+  auto tfl_resize_mode = is_bilinear
+                             ? tflite::resize_utils::ResizeMode::BILINEAR
+                             : tflite::resize_utils::ResizeMode::NEAREST;
 
-  // The ratio below is a non-zero positive value if this is a power-of-two
-  // upscaling.
-  int height_ratio = 0;
-  if (output_height % input_height == 0) {
-    int quotient = output_height / input_height;
-    if (llvm::isPowerOf2_64(quotient)) {
-      height_ratio = quotient;
-    }
-  }
+  int scale_y_n, scale_y_d, offset_y;
+  int scale_x_n, scale_x_d, offset_x;
+  tflite::resize_utils::PreprocessResizeParameters(
+      input_height, output_height, tfl_resize_mode, align_corners,
+      half_pixel_centers, &scale_y_n, &scale_y_d, &offset_y);
+  tflite::resize_utils::PreprocessResizeParameters(
+      input_width, output_width, tfl_resize_mode, align_corners,
+      half_pixel_centers, &scale_x_n, &scale_x_d, &offset_x);
 
-  int width_ratio = 0;
-  if (output_width % input_width == 0) {
-    int quotient = output_width / input_width;
-    if (llvm::isPowerOf2_64(quotient)) {
-      width_ratio = quotient;
-    }
-  }
-
-  // Align corners sets the scaling ratio to (OH - 1)/(IH - 1)
-  // rather than OH / IH. Similarly for width.
-  auto normalize = [&](int input, int output, int& n, int& d, int& offset,
-                       int& border) {
-    // Dimension is length 1, we are just sampling from one value.
-    if (input == 1) {
-      n = output;
-      d = 1;
-      offset = 0;
-      border = output - 1;
-      return;
-    }
-
-    // Apply if aligned and capable to be aligned.
-    bool apply_aligned = align_corners && (output > 1);
-    n = apply_aligned ? (output - 1) : output;
-    d = apply_aligned ? (input - 1) : input;
-
-    // Simplify the scalers, make sure they are even values.
-    int gcd = std::gcd(n, d);
-    n = 2 * n / gcd;
-    d = 2 * d / gcd;
-
-    // If half pixel centers we need to sample half a pixel inward.
-    offset = half_pixel_centers ? d / 2 : 0;
-
-    // If nearest neighbours we need to guarantee we round up.
-    if (is_nearest && align_corners) {
-      offset += n / 2;
-    }
-
-    if (is_bilinear && half_pixel_centers) {
-      offset -= n / 2;
-    }
-
-    // We can compute this directly based on previous values.
-    border = d * (output - 1) - n * (input - 1) + offset;
-  };
-
-  int scale_y_n, scale_y_d, offset_y, border_y;
-  int scale_x_n, scale_x_d, offset_x, border_x;
-  normalize(input_height, output_height, scale_y_n, scale_y_d, offset_y,
-            border_y);
-  normalize(input_width, output_width, scale_x_n, scale_x_d, offset_x,
-            border_x);
+  int border_y = scale_y_d * (output_height - 1) -
+                 scale_y_n * (input_height - 1) + offset_y;
+  int border_x =
+      scale_x_d * (output_width - 1) - scale_x_n * (input_width - 1) + offset_x;
 
   DenseI64ArrayAttr scale = rewriter.getDenseI64ArrayAttr(
       {scale_y_n, scale_y_d, scale_x_n, scale_x_d});
@@ -3415,11 +3370,9 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // TOSA RESIZE: 16 bit input -> 48 bit output, or 8 bit input -> 32 bit
       // output.
       if (input_element_qtype.getStorageTypeIntegralWidth() == 16) {
-        is_scale32 = false;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getIntegerType(48));
       } else if (input_element_qtype.getStorageTypeIntegralWidth() == 8) {
-        is_scale32 = true;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getI32Type());
       } else {
@@ -3432,49 +3385,8 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
           rewriter, op->getLoc(), output_acc_type, input_value, scale, offset,
           border, resize_mode);
 
-#ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
-      // TFLite resize_bilinear always assume input and output tensors have
-      // same scale That means we only need to arithmetic right shift with
-      // (2 * shift)
-      // TODO(suderman): Align TFLite rounding behavior
-      // TFLite also uses symmetric rounding by doing 'x / (1 << 20)'
-      // TOSA arithmetic right shift is doing standard rounding.
-      // Right now it's legalized using GreaterEqualOp + SelectOp to conform
-      // to TFLite reference. But this eventually should be fixed in TFLite
-      // reference
-      Value cst_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
-      Value cst_twenty = getTosaConstTensorSingleI32(rewriter, op, 20);
-
-      auto ge_op = CreateOpAndInfer<tosa::GreaterEqualOp>(
-          rewriter, op->getLoc(), output_bool_type, resize_op.getResult(),
-          cst_zero);
-
-      auto abs_op = CreateOpAndInfer<tosa::AbsOp>(
-          rewriter, op->getLoc(), output_acc_type, resize_op.getResult());
-
-      auto rshift_op = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
-          rewriter, op->getLoc(), output_acc_type, abs_op.getResult(),
-          cst_twenty, true);
-
-      auto negate_op = CreateOpAndInfer<tosa::NegateOp>(
-          rewriter, op->getLoc(), output_acc_type, rshift_op.getResult());
-
-      auto select_op = CreateOpAndInfer<tosa::SelectOp>(
-          rewriter, op->getLoc(), output_acc_type, ge_op.getResult(),
-          rshift_op.getResult(), negate_op.getResult());
-
-      auto cast_op = CreateOpAndInfer<tosa::CastOp>(
-          rewriter, op->getLoc(), output_type, select_op.getResult());
-
-      return cast_op.getResult();
-#else
-      // This should be the expected lowering, but is +-1 within compared to
-      // TFLite reference.
       return buildRescale(rewriter, op, output_type, resize_op.getResult(),
-                          1.0 / (scale_y_n * scale_x_n), 0, 0, false,
-                          is_scale32);
-#endif
-
+                          1.0f / (scale_y_n * scale_x_n), 0, 0, false, false);
     } else if (is_nearest) {
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
           rewriter, op->getLoc(), output_type, input_value, scale, offset,

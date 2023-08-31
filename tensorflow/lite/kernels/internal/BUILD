@@ -715,6 +715,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
+        "reference/resize_utils.h",
         "reference/round.h",
         "reference/select.h",
         "reference/slice.h",
