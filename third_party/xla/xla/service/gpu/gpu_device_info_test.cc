@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_device_info.h"
-
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -59,7 +57,7 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
             test_info.l2_cache_size,
             // Clock rate can vary between base and boost values.
             ::testing::Ge(test_info.clock_rate_ghz),
-            dev_info.device_memory_size));
+            test_info.device_memory_size));
   } else if (name == "Quadro P1000") {
     EXPECT_THAT(
         dev_info,

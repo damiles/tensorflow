@@ -230,11 +230,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override {
-    return std::optional<std::string>();
-  }
-
   virtual StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const;
 
@@ -771,9 +766,9 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
+class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
  public:
-  PjRtStreamExecutorExecutable(
+  PjRtStreamExecutorLoadedExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
@@ -782,7 +777,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
       std::vector<PjRtDevice*> addressable_devices,
       PjRtStreamExecutorClient* client);
 
-  ~PjRtStreamExecutorExecutable() override = default;
+  ~PjRtStreamExecutorLoadedExecutable() override = default;
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 

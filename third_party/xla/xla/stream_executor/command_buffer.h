@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -47,20 +46,41 @@ class CommandBufferInterface;
 // buffers allow to amortize the cost of launching "work" on device by building
 // it on the host ahead of time without expensive interaction with underlying
 // device.
-//
-// TODO(ezhulenev): Add a concept of a "nested" command buffer which can't be
-// submitted on its own, but has to be recorded into the parent command buffer.
-// For CUDA backend nested command buffers will never be instantiated into
-// executable graphs, but instead will only have a regular graph instance. We
-// should almost always trace into nested command buffers.
 class CommandBuffer {
  public:
+  ~CommandBuffer();
+  CommandBuffer(CommandBuffer&&);
+  CommandBuffer& operator=(CommandBuffer&&);
+
+  // Command buffer state:
+  //
+  //   (1) kCreate:    a new command buffer under construction
+  //   (2) kUpdate:    updating a previously finalized command buffer
+  //   (3) kFinalized: command buffer ready for execution
+  //
+  // Supported state transitions:
+  //
+  //   (1) Finalize: (kCreate|kUpdate) -> kFinalized
+  //   (2) Update:   kFinalized -> kUpdate
+  //
+  enum class State { kCreate, kUpdate, kFinalized };
+
+  // Command buffers have two modes of execution:
+  //
+  //   (1) kPrimary: command buffer can be submitted for execution via
+  //                 StreamExecutor APIs
+  //   (2) kNested:  command buffer can be executed only within a primary
+  //                 command buffer
+  //
+  enum class Mode { kPrimary, kNested };
+
   //===--------------------------------------------------------------------===//
   // Command buffer constructors
   //===--------------------------------------------------------------------===//
 
   // Creates a new empty command buffer on the given executor.
-  static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor);
+  static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor,
+                                             Mode mode = Mode::kPrimary);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation. All StreamExecutor operations on a Stream argument will be
@@ -71,7 +91,8 @@ class CommandBuffer {
   // explicit construction APIs, e.g. when calling external libraries.
   static tsl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor,
-      absl::AnyInvocable<tsl::Status(Stream*)> function);
+      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      Mode mode = Mode::kPrimary);
 
   //===--------------------------------------------------------------------===//
   // Command buffer API
@@ -79,7 +100,10 @@ class CommandBuffer {
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const KernelBase& kernel, const KernelArgsArrayBase& args);
+                     const Kernel& kernel, const KernelArgs& args);
+
+  // Adds a nested command buffer to the command buffer.
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
 
   // Adds a device-to-device memory copy to the command buffer.
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
@@ -89,6 +113,10 @@ class CommandBuffer {
   // finalized no commands can be added to it.
   tsl::Status Finalize();
 
+  // Begins command buffer update. Command buffer update should be finalized
+  // before it can be executed.
+  tsl::Status Update();
+
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
   template <typename... Params, typename... Args>
@@ -96,24 +124,32 @@ class CommandBuffer {
                      const ThreadDim& threads, const BlockDim& blocks,
                      Args... args);
 
+  // Returns command buffer execution mode.
+  Mode mode() const;
+
+  // Returns command buffer state.
+  State state() const;
+
   internal::CommandBufferInterface* implementation() {
     return implementation_.get();
   }
+
+  StreamExecutor* executor() const { return executor_; }
 
   const internal::CommandBufferInterface* implementation() const {
     return implementation_.get();
   }
 
-  explicit CommandBuffer(
+ private:
+  CommandBuffer(
+      StreamExecutor* executor,
       std::unique_ptr<internal::CommandBufferInterface> implementation);
 
-  CommandBuffer(CommandBuffer&&) = default;
-  CommandBuffer& operator=(CommandBuffer&&) = default;
-
- private:
+  StreamExecutor* executor_;
   std::unique_ptr<internal::CommandBufferInterface> implementation_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CommandBuffer);
+  CommandBuffer(const CommandBuffer&) = delete;
+  void operator=(const CommandBuffer&) = delete;
 };
 
 //===----------------------------------------------------------------------===//
@@ -124,12 +160,8 @@ template <typename... Params, typename... Args>
 inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
                                          const ThreadDim& threads,
                                          const BlockDim& blocks, Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-
-  KernelArgsArray<sizeof...(args)> kernel_args;
-  kernel.PackParams(&kernel_args, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, kernel_args));
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
   return tsl::OkStatus();
 }
 
